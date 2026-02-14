@@ -32,6 +32,12 @@ const localVisitsEl = document.querySelector("#local-visits");
 const globalVisitsEl = document.querySelector("#global-visits");
 
 const LEADERBOARD_KEY = "san-valentin-leaderboard-v1";
+const GLOBAL_SYNC = {
+  // Optional: set your Firebase Realtime Database URL for global visits + ranking.
+  // Example: "https://tu-proyecto-default-rtdb.firebaseio.com"
+  firebaseDbUrl: "https://jardin-amistad-default-rtdb.firebaseio.com/",
+  namespace: "san-valentin-jardin"
+};
 const LETTER_REGEX = /[\p{L}\p{N}]/u;
 
 const rosePalettes = [
@@ -71,6 +77,42 @@ function formatNumber(value) {
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
+}
+
+function isFirebaseSyncEnabled() {
+  return /^https:\/\//.test(GLOBAL_SYNC.firebaseDbUrl.trim());
+}
+
+function getFirebaseUrl(path) {
+  const base = GLOBAL_SYNC.firebaseDbUrl.trim().replace(/\/+$/, "");
+  const namespace = GLOBAL_SYNC.namespace.trim().replace(/^\/+|\/+$/g, "");
+  const cleanPath = path.replace(/^\/+|\/+$/g, "");
+  return `${base}/${namespace}/${cleanPath}.json`;
+}
+
+async function firebaseGet(path, fallbackValue) {
+  try {
+    const response = await fetch(getFirebaseUrl(path), { cache: "no-store" });
+    if (!response.ok) {
+      throw new Error("firebase_get_failed");
+    }
+    const data = await response.json();
+    return data ?? fallbackValue;
+  } catch {
+    return fallbackValue;
+  }
+}
+
+async function firebaseSet(path, value) {
+  const response = await fetch(getFirebaseUrl(path), {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(value)
+  });
+
+  if (!response.ok) {
+    throw new Error("firebase_set_failed");
+  }
 }
 
 function addMonths(baseDate, monthsToAdd) {
@@ -186,6 +228,15 @@ function getRoseSpread(total) {
 }
 
 function getRowCount(total) {
+  const isMobile = window.matchMedia("(max-width: 700px)").matches;
+
+  if (isMobile) {
+    if (total <= 5) return 1;
+    if (total <= 12) return 2;
+    if (total <= 17) return 3;
+    return 4;
+  }
+
   if (total <= 8) return 1;
   if (total <= 14) return 2;
   return 3;
@@ -314,12 +365,21 @@ function createNameFlower(rawName) {
   const knotHeight = Math.round(clamp(68 + totalRoses * 1.5, 76, 98));
   const ribbonWidth = Math.round(knotWidth + 18);
   const noteWidth = Math.round(clamp(knotWidth + 88, 165, 228));
-  const fieldTop = rowSizes.length === 1
+  const rowCount = rowSizes.length;
+  const fieldTop = rowCount === 1
     ? (totalRoses <= 4 ? 76 : 56)
-    : rowSizes.length === 2
+    : rowCount === 2
       ? 36
-      : 24;
-  const fieldBottom = rowSizes.length === 1 ? 108 : 114;
+      : rowCount === 3
+        ? 24
+        : 12;
+  const fieldBottom = rowCount === 1
+    ? 108
+    : rowCount === 2
+      ? 114
+      : rowCount === 3
+        ? 118
+        : 122;
 
   bouquet.style.setProperty("--wrap-back-width", `${backWidth}px`);
   bouquet.style.setProperty("--wrap-back-height", `${backHeight}px`);
@@ -405,6 +465,22 @@ function saveLeaderboard() {
   localStorage.setItem(LEADERBOARD_KEY, JSON.stringify(leaderboard));
 }
 
+function normalizeLeaderboardFromMap(playersMap) {
+  if (!playersMap || typeof playersMap !== "object") {
+    return [];
+  }
+
+  return Object.entries(playersMap)
+    .map(([initials, score]) => ({
+      initials: String(initials).toUpperCase().slice(0, 6),
+      score: Number(score) || 0,
+      at: 0
+    }))
+    .filter((item) => item.initials && item.score >= 0)
+    .sort((a, b) => b.score - a.score || a.initials.localeCompare(b.initials))
+    .slice(0, 50);
+}
+
 function renderLeaderboard() {
   leaderboardEl.innerHTML = "";
 
@@ -432,12 +508,51 @@ function renderLeaderboard() {
   });
 }
 
-function updateLeaderboard(initials, finalScore) {
+function updateLocalLeaderboard(initials, finalScore) {
   leaderboard.push({ initials, score: finalScore, at: Date.now() });
   leaderboard.sort((a, b) => b.score - a.score || a.at - b.at);
   leaderboard = leaderboard.slice(0, 50);
   saveLeaderboard();
   renderLeaderboard();
+}
+
+async function loadGlobalLeaderboardFirebase() {
+  if (!isFirebaseSyncEnabled()) {
+    return false;
+  }
+
+  const players = await firebaseGet("players", null);
+  if (!players || typeof players !== "object") {
+    return false;
+  }
+
+  leaderboard = normalizeLeaderboardFromMap(players);
+  saveLeaderboard();
+  renderLeaderboard();
+  return true;
+}
+
+async function updateLeaderboard(initials, finalScore) {
+  if (!isFirebaseSyncEnabled()) {
+    updateLocalLeaderboard(initials, finalScore);
+    return;
+  }
+
+  try {
+    const key = encodeURIComponent(initials);
+    const currentScore = Number(await firebaseGet(`players/${key}`, 0)) || 0;
+
+    if (finalScore > currentScore) {
+      await firebaseSet(`players/${key}`, finalScore);
+    }
+
+    const loaded = await loadGlobalLeaderboardFirebase();
+    if (!loaded) {
+      updateLocalLeaderboard(initials, finalScore);
+    }
+  } catch {
+    updateLocalLeaderboard(initials, finalScore);
+  }
 }
 
 flowerForm.addEventListener("submit", (event) => {
@@ -567,7 +682,7 @@ function getVisitNamespace() {
   return `san-valentin-${safe || "default"}`;
 }
 
-async function increaseGlobalVisits() {
+async function increaseGlobalVisitsCountApi() {
   const namespace = getVisitNamespace();
   const endpoint = `https://api.countapi.xyz/hit/${namespace}/visits`;
 
@@ -582,6 +697,26 @@ async function increaseGlobalVisits() {
   } catch (error) {
     globalVisitsEl.textContent = "No disponible";
   }
+}
+
+async function increaseGlobalVisitsFirebase() {
+  try {
+    const current = Number(await firebaseGet("visits", 0)) || 0;
+    const next = current + 1;
+    await firebaseSet("visits", next);
+    globalVisitsEl.textContent = formatNumber(next);
+  } catch {
+    globalVisitsEl.textContent = "No disponible";
+  }
+}
+
+async function increaseGlobalVisits() {
+  if (isFirebaseSyncEnabled()) {
+    await increaseGlobalVisitsFirebase();
+    return;
+  }
+
+  await increaseGlobalVisitsCountApi();
 }
 
 function startFloatingBackground() {
@@ -601,6 +736,11 @@ function startFloatingBackground() {
   birthDateInput.value = today.toISOString().slice(0, 10);
   leaderboard = loadLeaderboard();
   renderLeaderboard();
+
+  if (isFirebaseSyncEnabled()) {
+    loadGlobalLeaderboardFirebase();
+  }
+
   increaseLocalVisits();
   increaseGlobalVisits();
   startFloatingBackground();

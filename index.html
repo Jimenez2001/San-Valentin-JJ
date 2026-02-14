@@ -97,7 +97,7 @@
 
       <div class="entertainment-block">
         <h3>Mini juego: atrapa corazones</h3>
-        <p class="muted">Ingresa nombre y apellido para jugar. Se guarda ranking local con iniciales y mejor puntaje.</p>
+        <p class="muted">Ingresa nombre y apellido para jugar. El ranking es local por defecto; puede ser global con Firebase.</p>
         <div class="row game-player-row">
           <input id="player-fullname" type="text" maxlength="50" placeholder="Ejemplo: Mariana García">
           <button id="start-game" type="button">Jugar</button>
@@ -120,7 +120,7 @@
       <h2>4) Contador de visitas</h2>
       <p>Tus visitas desde este navegador: <strong id="local-visits">0</strong></p>
       <p>Visitas globales a esta pagina: <strong id="global-visits">Cargando...</strong></p>
-      <p class="muted">El conteo global usa un servicio publico (CountAPI), ideal para GitHub Pages.</p>
+      <p class="muted">Global: Firebase (si lo configuras) o CountAPI como respaldo.</p>
     </section>
   </main>
 

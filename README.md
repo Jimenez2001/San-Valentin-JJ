@@ -8,10 +8,12 @@ Pagina web en HTML, CSS y JavaScript para regalar a amigas o personas especiales
 - Contador de vida en tiempo real (anos, meses, dias, horas, minutos, segundos).
 - Frases bonitas aleatorias.
 - Mini juego "atrapa corazones".
-- Ranking local del juego con iniciales (nombre + apellido) y mejor puntaje.
+- Ranking con iniciales y mejor puntaje:
+  - Local por defecto (`localStorage`).
+  - Global si configuras Firebase Realtime Database.
 - Contador de visitas:
   - Local (por navegador).
-  - Global usando CountAPI (funciona en GitHub Pages sin backend).
+  - Global usando Firebase (opcional) o CountAPI (respaldo).
 
 ## Como usar localmente
 
@@ -27,10 +29,34 @@ Pagina web en HTML, CSS y JavaScript para regalar a amigas o personas especiales
 4. Guarda y espera unos minutos.
 5. Tu pagina quedara disponible en la URL de Pages del repositorio.
 
-## Nota del contador global
+## Ranking y visitas globales (todos los navegadores)
 
-El contador global usa:
+Si no configuras nada, el ranking sera local por navegador.
 
-- `https://api.countapi.xyz/hit/{namespace}/visits`
+Para tener ranking y visitas globales reales:
 
-La `namespace` se genera automaticamente con tu dominio y ruta, asi que cada pagina tendra su propio contador.
+1. Crea un proyecto en Firebase.
+2. Activa `Realtime Database`.
+3. En reglas (modo simple) usa:
+
+```json
+{
+  "rules": {
+    ".read": true,
+    ".write": true
+  }
+}
+```
+
+4. En `script.js`, edita:
+
+```js
+const GLOBAL_SYNC = {
+  firebaseDbUrl: "https://TU-PROYECTO-default-rtdb.firebaseio.com",
+  namespace: "san-valentin-jardin"
+};
+```
+
+5. Guarda, sube cambios a GitHub y recarga la pagina.
+
+Si `firebaseDbUrl` esta vacio, la pagina usa CountAPI para visitas globales y ranking local.
