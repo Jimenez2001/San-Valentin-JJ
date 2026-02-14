@@ -1,0 +1,133 @@
+﻿<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Jardin de Amistad | San Valentin</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700&family=Nunito:wght@400;600;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="background-orb orb-a"></div>
+  <div class="background-orb orb-b"></div>
+
+  <header class="hero">
+    <p class="tag">Regalo digital para amistad</p>
+    <h1>Jardin de flores para personas especiales</h1>
+    <p class="hero-text">
+      Escribe un nombre, crea una flor unica y mira el tiempo de vida de esa flor en esta tierra.
+      Tambien hay entretenimiento para quienes visiten esta pagina.
+    </p>
+    <a class="hero-link" href="#crear">Comenzar</a>
+  </header>
+
+  <main class="layout">
+    <section id="crear" class="card">
+      <h2>1) Ramo de rosas con nombre</h2>
+      <form id="flower-form" class="stack">
+        <label for="friend-name">Nombre de tu amiga o persona especial</label>
+        <div class="row">
+          <input id="friend-name" name="friend-name" type="text" maxlength="30" placeholder="Ejemplo: Mariana" required>
+          <button type="submit">Crear flor</button>
+        </div>
+      </form>
+
+      <div id="flower-stage" class="flower-stage">
+        <p class="muted">Aqui aparecera el ramo de rosas personalizado.</p>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>2) Tiempo de vida de la flor</h2>
+      <p class="muted">Selecciona fecha y hora de nacimiento para ver anos, meses, dias y segundos en tiempo real.</p>
+
+      <form id="life-form" class="stack">
+        <label for="birth-date">Fecha</label>
+        <input id="birth-date" type="date" required>
+
+        <label for="birth-time">Hora</label>
+        <input id="birth-time" type="time" value="00:00" required>
+
+        <button type="submit">Iniciar contador</button>
+      </form>
+
+      <div class="counter-grid">
+        <article>
+          <p class="counter-value" id="years">0</p>
+          <p class="counter-label">Anos</p>
+        </article>
+        <article>
+          <p class="counter-value" id="months">0</p>
+          <p class="counter-label">Meses</p>
+        </article>
+        <article>
+          <p class="counter-value" id="days">0</p>
+          <p class="counter-label">Dias</p>
+        </article>
+        <article>
+          <p class="counter-value" id="hours">0</p>
+          <p class="counter-label">Horas</p>
+        </article>
+        <article>
+          <p class="counter-value" id="minutes">0</p>
+          <p class="counter-label">Minutos</p>
+        </article>
+        <article>
+          <p class="counter-value" id="seconds">0</p>
+          <p class="counter-label">Segundos</p>
+        </article>
+      </div>
+
+      <div class="totals">
+        <p>Total de dias: <strong id="total-days">0</strong></p>
+        <p>Total de segundos: <strong id="total-seconds">0</strong></p>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>3) Entretenimiento</h2>
+
+      <div class="entertainment-block">
+        <h3>Frase bonita aleatoria</h3>
+        <p id="quote" class="quote">Haz clic para mostrar una frase de amistad.</p>
+        <button id="quote-btn" type="button">Mostrar frase</button>
+      </div>
+
+      <div class="entertainment-block">
+        <h3>Mini juego: atrapa corazones</h3>
+        <p class="muted">Ingresa nombre y apellido para jugar. Se guarda ranking local con iniciales y mejor puntaje.</p>
+        <div class="row game-player-row">
+          <input id="player-fullname" type="text" maxlength="50" placeholder="Ejemplo: Mariana García">
+          <button id="start-game" type="button">Jugar</button>
+        </div>
+        <div class="game-info">
+          <p>Jugador: <strong id="current-player">--</strong></p>
+          <p>Puntaje: <strong id="score">0</strong></p>
+          <p>Tiempo: <strong id="time-left">20</strong>s</p>
+        </div>
+        <div id="game-area" class="game-area" aria-label="Zona del juego"></div>
+        <div class="ranking-box">
+          <p>Mejor jugador: <strong id="best-player">--</strong> con <strong id="best-score">0</strong> pts</p>
+          <p>Iniciales que han jugado: <span id="players-initials">--</span></p>
+          <ol id="leaderboard" class="leaderboard"></ol>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>4) Contador de visitas</h2>
+      <p>Tus visitas desde este navegador: <strong id="local-visits">0</strong></p>
+      <p>Visitas globales a esta pagina: <strong id="global-visits">Cargando...</strong></p>
+      <p class="muted">El conteo global usa un servicio publico (CountAPI), ideal para GitHub Pages.</p>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <p>Hecho con amor y amistad para San Valentin.</p>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>
