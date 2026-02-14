@@ -11,6 +11,9 @@ Pagina web en HTML, CSS y JavaScript para regalar a amigas o personas especiales
 - Ranking con iniciales y mejor puntaje:
   - Local por defecto (`localStorage`).
   - Global si configuras Firebase Realtime Database.
+  - Identidad por nombre completo (mismo nombre actualiza mejor puntaje).
+  - Si se repiten iniciales entre personas distintas, se desambiguan con letras extra.
+- Boton para abrir una pagina especial en una nueva pestaña.
 - Contador de visitas:
   - Local (por navegador).
   - Global usando Firebase (opcional) o CountAPI (respaldo).

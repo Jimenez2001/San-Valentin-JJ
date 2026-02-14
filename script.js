@@ -16,6 +16,7 @@ const totalSecondsEl = document.querySelector("#total-seconds");
 
 const quoteEl = document.querySelector("#quote");
 const quoteBtn = document.querySelector("#quote-btn");
+const openSurpriseBtn = document.querySelector("#open-surprise");
 
 const playerFullnameInput = document.querySelector("#player-fullname");
 const currentPlayerEl = document.querySelector("#current-player");
@@ -66,9 +67,11 @@ let lifeIntervalId = null;
 
 let gameIntervalId = null;
 let spawnIntervalId = null;
-let gameSeconds = 20;
+let gameSeconds = 25;
 let score = 0;
 let currentPlayerInitials = "--";
+let currentPlayerId = "";
+let currentPlayerName = "";
 let leaderboard = [];
 
 function formatNumber(value) {
@@ -439,13 +442,115 @@ function createNameFlower(rawName) {
   createSparkles(document.body, 16);
 }
 
-function getInitials(fullName) {
-  const parts = fullName.trim().split(/\s+/).filter(Boolean);
-  if (parts.length < 2) return "";
+function normalizeText(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
 
-  const first = [...parts[0]][0] || "";
-  const last = [...parts[parts.length - 1]][0] || "";
-  return `${first}${last}`.toUpperCase();
+function normalizeSpaces(value) {
+  return String(value || "").trim().replace(/\s+/g, " ");
+}
+
+function getBaseInitials(fullName) {
+  const words = normalizeSpaces(fullName).split(" ").filter(Boolean);
+  if (words.length < 2) {
+    const solo = normalizeText(words[0] || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+    return (solo.slice(0, 2) || "").padEnd(2, "X");
+  }
+
+  const first = normalizeText(words[0]).toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const last = normalizeText(words[words.length - 1]).toUpperCase().replace(/[^A-Z0-9]/g, "");
+  return `${first[0] || ""}${last[0] || ""}`;
+}
+
+function buildPlayerId(fullName) {
+  const normalized = normalizeText(normalizeSpaces(fullName))
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return normalized;
+}
+
+function getPlayerIdentity(rawFullName) {
+  const fullName = normalizeSpaces(rawFullName);
+  const words = fullName.split(" ").filter(Boolean);
+  if (words.length < 2) {
+    return null;
+  }
+
+  const id = buildPlayerId(fullName);
+  const initials = getBaseInitials(fullName);
+  if (!id || !initials) {
+    return null;
+  }
+
+  return { id, fullName, initials };
+}
+
+function getAliasLetterPool(fullName) {
+  const words = normalizeSpaces(fullName).split(" ").filter(Boolean);
+  const first = normalizeText(words[0] || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const last = normalizeText(words[words.length - 1] || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  return `${first.slice(1)}${last.slice(1)}`;
+}
+
+function buildAliasMap(entries) {
+  const groups = new Map();
+
+  entries.forEach((entry) => {
+    const base = getBaseInitials(entry.fullName || "") || "XX";
+    if (!groups.has(base)) {
+      groups.set(base, []);
+    }
+    groups.get(base).push(entry);
+  });
+
+  const aliasById = new Map();
+
+  groups.forEach((groupEntries, base) => {
+    const used = new Set();
+    const sorted = [...groupEntries].sort((a, b) => a.fullName.localeCompare(b.fullName, "es"));
+
+    sorted.forEach((entry) => {
+      let alias = base;
+      if (used.has(alias)) {
+        alias = "";
+      }
+
+      if (!alias) {
+        const pool = getAliasLetterPool(entry.fullName);
+        let accum = "";
+        for (const ch of pool) {
+          accum += ch;
+          const candidate = `${base}${accum}`;
+          if (!used.has(candidate)) {
+            alias = candidate;
+            break;
+          }
+        }
+      }
+
+      if (!alias) {
+        let suffix = 2;
+        while (used.has(`${base}${suffix}`)) {
+          suffix += 1;
+        }
+        alias = `${base}${suffix}`;
+      }
+
+      used.add(alias);
+      aliasById.set(entry.id, alias);
+    });
+  });
+
+  return aliasById;
+}
+
+function sortLeaderboard(items) {
+  return [...items]
+    .sort((a, b) => b.score - a.score || a.fullName.localeCompare(b.fullName, "es"))
+    .slice(0, 50);
 }
 
 function loadLeaderboard() {
@@ -453,9 +558,34 @@ function loadLeaderboard() {
     const saved = JSON.parse(localStorage.getItem(LEADERBOARD_KEY) || "[]");
     if (!Array.isArray(saved)) return [];
 
-    return saved
-      .filter((item) => item && typeof item.initials === "string" && Number.isFinite(item.score))
-      .map((item) => ({ initials: item.initials, score: Number(item.score), at: Number(item.at) || 0 }));
+    const parsed = saved
+      .map((item) => {
+        if (!item || typeof item !== "object") return null;
+        if (typeof item.id === "string" && typeof item.fullName === "string" && Number.isFinite(item.score)) {
+          return {
+            id: item.id,
+            fullName: normalizeSpaces(item.fullName),
+            score: Number(item.score),
+            at: Number(item.at) || 0
+          };
+        }
+
+        if (typeof item.initials === "string" && Number.isFinite(item.score)) {
+          // Legacy fallback for previous versions.
+          const fallbackName = normalizeSpaces(item.initials.toUpperCase());
+          return {
+            id: `legacy-${fallbackName}-${Number(item.at) || 0}`,
+            fullName: fallbackName,
+            score: Number(item.score),
+            at: Number(item.at) || 0
+          };
+        }
+
+        return null;
+      })
+      .filter(Boolean);
+
+    return sortLeaderboard(parsed);
   } catch {
     return [];
   }
@@ -470,15 +600,29 @@ function normalizeLeaderboardFromMap(playersMap) {
     return [];
   }
 
-  return Object.entries(playersMap)
-    .map(([initials, score]) => ({
-      initials: String(initials).toUpperCase().slice(0, 6),
-      score: Number(score) || 0,
-      at: 0
-    }))
-    .filter((item) => item.initials && item.score >= 0)
-    .sort((a, b) => b.score - a.score || a.initials.localeCompare(b.initials))
-    .slice(0, 50);
+  const mapped = Object.entries(playersMap)
+    .map(([id, value]) => {
+      if (value && typeof value === "object") {
+        const fullName = normalizeSpaces(value.fullName || id);
+        return {
+          id,
+          fullName,
+          score: Number(value.score) || 0,
+          at: Number(value.updatedAt) || 0
+        };
+      }
+
+      // Legacy fallback when value is just a number.
+      return {
+        id: `legacy-${id}`,
+        fullName: normalizeSpaces(String(id).toUpperCase()),
+        score: Number(value) || 0,
+        at: 0
+      };
+    })
+    .filter((item) => item.id && item.fullName && item.score >= 0);
+
+  return sortLeaderboard(mapped);
 }
 
 function renderLeaderboard() {
@@ -494,24 +638,41 @@ function renderLeaderboard() {
     return;
   }
 
+  const aliasById = buildAliasMap(leaderboard);
   const best = leaderboard[0];
-  bestPlayerEl.textContent = best.initials;
+  const bestAlias = aliasById.get(best.id) || getBaseInitials(best.fullName) || "--";
+  bestPlayerEl.textContent = bestAlias;
   bestScoreEl.textContent = formatNumber(best.score);
 
-  const uniqueInitials = [...new Set(leaderboard.map((item) => item.initials))];
-  playersInitialsEl.textContent = uniqueInitials.join(" - ");
+  const uniqueAliases = [...new Set(leaderboard.map((item) => aliasById.get(item.id) || "XX"))];
+  playersInitialsEl.textContent = uniqueAliases.join(" - ");
 
   leaderboard.slice(0, 10).forEach((item) => {
     const li = document.createElement("li");
-    li.textContent = `${item.initials} - ${formatNumber(item.score)} pts`;
+    const alias = aliasById.get(item.id) || getBaseInitials(item.fullName) || "XX";
+    li.textContent = `${alias} - ${formatNumber(item.score)} pts`;
     leaderboardEl.appendChild(li);
   });
 }
 
-function updateLocalLeaderboard(initials, finalScore) {
-  leaderboard.push({ initials, score: finalScore, at: Date.now() });
-  leaderboard.sort((a, b) => b.score - a.score || a.at - b.at);
-  leaderboard = leaderboard.slice(0, 50);
+function updateLocalLeaderboard(player, finalScore) {
+  const existing = leaderboard.find((item) => item.id === player.id);
+  if (existing) {
+    if (finalScore > existing.score) {
+      existing.score = finalScore;
+      existing.at = Date.now();
+      existing.fullName = player.fullName;
+    }
+  } else {
+    leaderboard.push({
+      id: player.id,
+      fullName: player.fullName,
+      score: finalScore,
+      at: Date.now()
+    });
+  }
+
+  leaderboard = sortLeaderboard(leaderboard);
   saveLeaderboard();
   renderLeaderboard();
 }
@@ -521,8 +682,8 @@ async function loadGlobalLeaderboardFirebase() {
     return false;
   }
 
-  const players = await firebaseGet("players", null);
-  if (!players || typeof players !== "object") {
+  const players = await firebaseGet("players", {});
+  if (players === null || typeof players !== "object") {
     return false;
   }
 
@@ -532,26 +693,31 @@ async function loadGlobalLeaderboardFirebase() {
   return true;
 }
 
-async function updateLeaderboard(initials, finalScore) {
+async function updateLeaderboard(player, finalScore) {
   if (!isFirebaseSyncEnabled()) {
-    updateLocalLeaderboard(initials, finalScore);
+    updateLocalLeaderboard(player, finalScore);
     return;
   }
 
   try {
-    const key = encodeURIComponent(initials);
-    const currentScore = Number(await firebaseGet(`players/${key}`, 0)) || 0;
+    const key = player.id;
+    const current = await firebaseGet(`players/${key}`, null);
+    const currentScore = Number(current?.score) || 0;
 
     if (finalScore > currentScore) {
-      await firebaseSet(`players/${key}`, finalScore);
+      await firebaseSet(`players/${key}`, {
+        fullName: player.fullName,
+        score: finalScore,
+        updatedAt: Date.now()
+      });
     }
 
     const loaded = await loadGlobalLeaderboardFirebase();
     if (!loaded) {
-      updateLocalLeaderboard(initials, finalScore);
+      updateLocalLeaderboard(player, finalScore);
     }
   } catch {
-    updateLocalLeaderboard(initials, finalScore);
+    updateLocalLeaderboard(player, finalScore);
   }
 }
 
@@ -589,6 +755,12 @@ quoteBtn.addEventListener("click", () => {
   quoteEl.textContent = quotes[index];
 });
 
+if (openSurpriseBtn) {
+  openSurpriseBtn.addEventListener("click", () => {
+    window.open("https://proyecto-san-valentin.vercel.app", "_blank", "noopener,noreferrer");
+  });
+}
+
 function clearHearts() {
   gameArea.querySelectorAll(".catch-heart").forEach((heart) => heart.remove());
 }
@@ -612,10 +784,22 @@ function spawnHeart() {
   });
 
   gameArea.appendChild(heart);
-  setTimeout(() => heart.remove(), 1400);
+  setTimeout(() => heart.remove(), 1050);
 }
 
-function finishGame() {
+function spawnHeartWave() {
+  const roll = Math.random();
+  let total = 1;
+
+  if (roll < 0.48) total = 2;
+  if (roll < 0.16) total = 3;
+
+  for (let i = 0; i < total; i += 1) {
+    spawnHeart();
+  }
+}
+
+async function finishGame() {
   clearInterval(gameIntervalId);
   clearInterval(spawnIntervalId);
   clearHearts();
@@ -625,8 +809,14 @@ function finishGame() {
   startGameBtn.disabled = false;
   startGameBtn.textContent = "Jugar";
 
-  if (currentPlayerInitials !== "--") {
-    updateLeaderboard(currentPlayerInitials, score);
+  if (currentPlayerId) {
+    await updateLeaderboard(
+      {
+        id: currentPlayerId,
+        fullName: currentPlayerName
+      },
+      score
+    );
   }
 
   quoteEl.textContent = `Juego terminado. ${currentPlayerInitials} hizo ${score} puntos.`;
@@ -636,33 +826,35 @@ function startGame() {
   if (gameIntervalId || spawnIntervalId) return;
 
   const fullName = playerFullnameInput.value.trim();
-  const initials = getInitials(fullName);
+  const identity = getPlayerIdentity(fullName);
 
-  if (!initials) {
+  if (!identity) {
     alert("Para jugar, escribe nombre y apellido. Ejemplo: Mariana García");
     playerFullnameInput.focus();
     return;
   }
 
-  currentPlayerInitials = initials;
+  currentPlayerId = identity.id;
+  currentPlayerName = identity.fullName;
+  currentPlayerInitials = identity.initials;
   currentPlayerEl.textContent = currentPlayerInitials;
 
   score = 0;
-  gameSeconds = 20;
+  gameSeconds = 25;
   scoreEl.textContent = "0";
   timeLeftEl.textContent = String(gameSeconds);
   startGameBtn.disabled = true;
   startGameBtn.textContent = "Jugando...";
 
-  spawnHeart();
-  spawnIntervalId = setInterval(spawnHeart, 650);
+  spawnHeartWave();
+  spawnIntervalId = setInterval(spawnHeartWave, 430);
 
   gameIntervalId = setInterval(() => {
     gameSeconds -= 1;
     timeLeftEl.textContent = String(gameSeconds);
 
     if (gameSeconds <= 0) {
-      finishGame();
+      void finishGame();
     }
   }, 1000);
 }
