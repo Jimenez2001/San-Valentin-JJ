@@ -182,18 +182,64 @@ function getNameLetters(rawName) {
 }
 
 function getRoseSpread(total) {
-  return Math.round(clamp(58 + total * 12, 58, 280));
+  return Math.round(clamp((total - 1) * 46 + 24, 90, 400));
 }
 
-function createRose(letter, index, total) {
-  const progress = total === 1 ? 0.5 : index / (total - 1);
-  const spread = getRoseSpread(total);
-  const curve = 1 - Math.abs(progress - 0.5) * 2;
+function getRowCount(total) {
+  if (total <= 8) return 1;
+  if (total <= 14) return 2;
+  return 3;
+}
 
-  const x = Math.round((progress - 0.5) * spread + (Math.random() * 14 - 7));
-  const stem = Math.round(90 + curve * 44 + Math.random() * 12);
-  const lift = Math.round(12 + curve * 36 + Math.random() * 6);
-  const rot = ((progress - 0.5) * 23 + (Math.random() * 5 - 2.5)).toFixed(2);
+function buildRowSizes(total) {
+  const rowCount = getRowCount(total);
+  const base = Math.floor(total / rowCount);
+  const extra = total % rowCount;
+  const sizes = [];
+
+  for (let i = 0; i < rowCount; i += 1) {
+    sizes.push(base + (i < extra ? 1 : 0));
+  }
+
+  return sizes;
+}
+
+function createRose(letter, placement) {
+  const {
+    index,
+    progress,
+    rowIndex,
+    rowCount,
+    rowSize,
+    total,
+    maxRowSize
+  } = placement;
+  const curve = 1 - Math.abs(progress - 0.5) * 2;
+  const compactMode = rowCount === 1 && total <= 4;
+  const spreadBase = getRoseSpread(maxRowSize);
+  const rowInset = rowIndex * 14;
+  let spread = Math.max(74, spreadBase - rowInset);
+  if (compactMode) {
+    if (rowSize === 1) {
+      spread = 0;
+    } else if (rowSize === 2) {
+      spread = 72;
+    } else {
+      spread = 102 + (rowSize - 3) * 14;
+    }
+  }
+  const densityScale = clamp(1 - Math.max(total - 12, 0) * 0.01, 0.84, 1);
+  const rowScale = clamp(densityScale - rowIndex * 0.06, 0.74, 1);
+
+  const jitter = compactMode ? 0 : (index % 2 === 0 ? -1 : 1) * Math.random() * 1.2;
+  const x = Math.round((progress - 0.5) * spread + jitter);
+  const stem = compactMode
+    ? Math.round(88 + curve * 16 + Math.random() * 4)
+    : Math.round(104 + curve * 26 - rowIndex * 8 + Math.random() * 6);
+  const lift = compactMode
+    ? Math.round(60 + curve * 5 + Math.random() * 2)
+    : Math.round(86 - rowIndex * 28 + curve * 6 + Math.random() * 3);
+  const rot = ((progress - 0.5) * 14 + (Math.random() * 3 - 1.5)).toFixed(2);
   const delay = (index * 0.08 + Math.random() * 0.2).toFixed(2);
   const palette = rosePalettes[index % rosePalettes.length];
 
@@ -203,9 +249,12 @@ function createRose(letter, index, total) {
   rose.style.setProperty("--stem", `${stem}px`);
   rose.style.setProperty("--lift", `${lift}px`);
   rose.style.setProperty("--rot", `${rot}deg`);
+  rose.style.setProperty("--scale", rowScale.toFixed(3));
   rose.style.setProperty("--delay", `${delay}s`);
   rose.style.setProperty("--rose-a", palette.a);
   rose.style.setProperty("--rose-b", palette.b);
+  // Lower rows must render above upper rows so letters remain visible.
+  rose.style.zIndex = String(16 + rowIndex * 10 + Math.round(curve * 3));
 
   const stemEl = document.createElement("span");
   stemEl.className = "rose-stem";
@@ -252,17 +301,25 @@ function createNameFlower(rawName) {
   const bouquet = document.createElement("div");
   bouquet.className = "bouquet";
 
-  const spread = getRoseSpread(totalRoses);
+  const rowSizes = buildRowSizes(totalRoses);
+  const maxRowSize = Math.max(...rowSizes);
+  const spread = getRoseSpread(maxRowSize) + (rowSizes.length - 1) * 8;
   const bouquetSpan = spread + 122;
   const backWidth = Math.round(clamp(bouquetSpan + 34, 240, 420));
   const backHeight = Math.round(clamp(130 + totalRoses * 3.1, 128, 194));
   const sideWidth = Math.round(clamp(bouquetSpan * 0.62, 145, 250));
   const sideHeight = Math.round(clamp(170 + totalRoses * 4, 178, 252));
-  const sideOffset = Math.round(sideWidth - 8);
+  const sideOffset = Math.round(sideWidth - 26);
   const knotWidth = Math.round(clamp(78 + totalRoses * 2.5, 86, 128));
   const knotHeight = Math.round(clamp(68 + totalRoses * 1.5, 76, 98));
   const ribbonWidth = Math.round(knotWidth + 18);
   const noteWidth = Math.round(clamp(knotWidth + 88, 165, 228));
+  const fieldTop = rowSizes.length === 1
+    ? (totalRoses <= 4 ? 76 : 56)
+    : rowSizes.length === 2
+      ? 36
+      : 24;
+  const fieldBottom = rowSizes.length === 1 ? 108 : 114;
 
   bouquet.style.setProperty("--wrap-back-width", `${backWidth}px`);
   bouquet.style.setProperty("--wrap-back-height", `${backHeight}px`);
@@ -273,12 +330,29 @@ function createNameFlower(rawName) {
   bouquet.style.setProperty("--knot-height", `${knotHeight}px`);
   bouquet.style.setProperty("--ribbon-width", `${ribbonWidth}px`);
   bouquet.style.setProperty("--note-width", `${noteWidth}px`);
+  bouquet.style.setProperty("--field-top", `${fieldTop}px`);
+  bouquet.style.setProperty("--field-bottom", `${fieldBottom}px`);
 
   const roseField = document.createElement("div");
   roseField.className = "rose-field";
 
-  for (let i = 0; i < totalRoses; i += 1) {
-    roseField.appendChild(createRose(letters[i], i, totalRoses));
+  let letterCursor = 0;
+  for (let rowIndex = 0; rowIndex < rowSizes.length; rowIndex += 1) {
+    const rowSize = rowSizes[rowIndex];
+    for (let i = 0; i < rowSize; i += 1) {
+      const progress = rowSize === 1 ? 0.5 : i / (rowSize - 1);
+      const placement = {
+        index: letterCursor,
+        progress,
+        rowIndex,
+        rowCount: rowSizes.length,
+        rowSize,
+        total: totalRoses,
+        maxRowSize
+      };
+      roseField.appendChild(createRose(letters[letterCursor], placement));
+      letterCursor += 1;
+    }
   }
 
   const wrapBack = document.createElement("div");
